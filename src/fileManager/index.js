@@ -1,6 +1,9 @@
 import readline from "readline";
 import path from "path";
-import fs from "fs/promises";
+import fs from "fs";
+import fsPromises from "fs/promises";
+import crypto from "crypto";
+import { EOL, cpus, homedir, userInfo } from "os";
 
 const args = process.argv.slice(2);
 let username = "";
@@ -13,6 +16,31 @@ args.forEach((arg, index) => {
 console.log(`Welcome to the File Manager, ${username}!`);
 printCurrentDirectory();
 
+function getOsInfo(command) {
+  switch (command) {
+    case "os --EOL":
+      console.log("EOL is:", JSON.stringify(EOL));
+      break;
+    case "os --cpus":
+      const allCpus = cpus();
+      console.log(`Amount of CPUs: ${allCpus.length}`);
+      allCpus.forEach((cpu, index) => {
+        const speedGHz = (cpu.speed / 1000).toFixed(2);
+        console.log(`${index + 1} - Model: ${cpu.model}`);
+        console.log(`Speed: ${speedGHz} GHz\n`);
+      });
+      break;
+    case "os --homedir":
+      console.log(homedir());
+      break;
+    case "os --username":
+      console.log(userInfo().username);
+      break;
+    case "os --architecture":
+      console.log(`Architecture: ${process.arch}`);
+      break;
+  }
+}
 function changeDirectory(targetPath) {
   try {
     const absolutePath = path.resolve(targetPath);
@@ -43,6 +71,27 @@ function goUpperFromCurrentDirectory() {
   process.chdir(parentDir);
 }
 
+async function calculateFileHash(filePath) {
+  try {
+    const fullPath = path.resolve(filePath);
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(fullPath);
+
+    stream.on("error", (err) => {
+      console.error(err.message);
+    });
+    stream.on("data", (chunk) => {
+      hash.update(chunk);
+    });
+    stream.on("end", () => {
+      const digest = hash.digest("hex");
+      console.log(`SHA-256 hash of ${filePath}:\n${digest}`);
+    });
+  } catch (err) {
+    console.log(err);
+  }
+}
+
 function promptUser() {
   rl.question("Type something: ", async (command) => {
     command = command.trim();
@@ -51,7 +100,11 @@ function promptUser() {
       rl.close();
       return;
     }
-    if (command === "ls") {
+    if (command.startsWith("hash ")) {
+      const filePath = command.slice(5).trim();
+      calculateFileHash(filePath);
+    } else if (command.includes("os")) getOsInfo(command);
+    else if (command === "ls") {
       await listAllFilesAndFolders();
     } else if (command === "up") {
       goUpperFromCurrentDirectory();
@@ -68,10 +121,10 @@ async function listAllFilesAndFolders() {
   const currentDir = process.cwd();
   let list = [];
   try {
-    const items = await fs.readdir(currentDir);
+    const items = await fsPromises.readdir(currentDir);
     for (const item of items) {
       const fullPath = path.join(currentDir, item);
-      const stat = await fs.lstat(fullPath);
+      const stat = await fsPromises.lstat(fullPath);
       if (item.startsWith(".")) continue;
       list.push({
         Name: item,
